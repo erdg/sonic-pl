@@ -230,6 +230,7 @@
 
 
 # tests
+(test '(play 60 release: "1.5000") (spl-preprocess '(play 60 release: 1.5)))
 
 # should play a lame industrial beat in c minor
 (de spl-sound-check ()
