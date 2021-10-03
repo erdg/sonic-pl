@@ -1,3 +1,11 @@
+# currently using 'spl%' as the front-end to sonic pl syntax,
+# paired with the redefinitions of 'spl-run-[...]' functions
+# defined towards the end of the file.  most things are
+# working, see the examples at the end of the file. code is a
+# mess - too many things commented out, functions redefined.
+
+
+
 # pass ruby code (as string) to sonic pi server
 
 # (spt-eval "play 66, sustain: 2")
@@ -16,6 +24,8 @@
 
 # -- see https://github.com/emlyn/sonic-pi-tool
 
+
+# using 'spl%' below, but not ready to delete this
 
 # sonic picolisp code
 #
