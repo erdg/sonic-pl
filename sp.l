@@ -1,11 +1,3 @@
-# currently using 'spl%' as the front-end to sonic pl syntax,
-# paired with the redefinitions of 'spl-run-[...]' functions
-# defined towards the end of the file.  most things are
-# working, see the examples at the end of the file. code is a
-# mess - too many things commented out, functions redefined.
-
-
-
 # pass ruby code (as string) to sonic pi server
 
 # (spt-eval "play 66, sustain: 2")
@@ -25,201 +17,227 @@
 # -- see https://github.com/emlyn/sonic-pi-tool
 
 
-# using 'spl%' below, but not ready to delete this
-
 # sonic picolisp code
 #
 # a little bit of preprocessing and fancy printing allows
 # picolisp to generate ruby code to send to the sonic pi
 # server
 
-# (de spl Xs
-#    (out (tmp "sonic-pi")
-#       (spl-run-forms (mapcar spl-preprocess Xs)) )
-#    (spt-eval-file (tmp "sonic-pi")) )
+(de spl Xs
+   (out (tmp "sonic-pi")
+      (spl-run-forms (mapcar spl-preprocess Xs)) )
+   (spt-eval-file (tmp "sonic-pi")) )
 
-# (de spl-debug Xs
-#    (spl-run-forms (mapcar spl-preprocess Xs)) )
+(de spl-debug Xs
+   (spl-run-forms (mapcar spl-preprocess Xs)) )
 
-# (de spl-run-forms (Xs)
-#    (for X Xs
-#       (ifn (member (car X) *SplFns)
-#          (eval X)
-#          (spl-run-fn X) )
-#       (prin ";") ) )
+(de spl-run-forms (Xs)
+   (for X Xs
+      (cond
+         ((= (car X) '=)
+            (spl-run-var X) )
+         ((or (member (car X) *SplBlockFns) (sub? ".times" (car X)))
+            (spl-run-block-fn X) )
+         (T (spl-run-fn X)) )
+      (prin ";") ) )
 
-# (de spl-run-fn (Form)
-#    (let [(Car . Cdr) Form]
-#       (prog
-#          (prin (pl-to-rb Car) (char 40))
-#          (for (I . X) Cdr
-#             (let Next (car (nth Cdr (+ I 1)))
-#                (cond
-#                   ((pair X)
-#                      (if (or (num? (car X)) (str? (car X)) (pre? ":" (car X)))
-#                         (prin "[" (glue "," X) "]")  # arrays
-#                         (if (member (car X) *SplFns)
-#                            (spl-run-fn X)
-#                            (eval X) ) ) )
-#                   ((pre? "." X) (prin X))
-#                   ((= (last (chop X)) ":")
-#                      (prin X " ") )
-#                   (T (prin X)) )
-#                # print commas unless it's an 'opt:' or '.function'
-#                (cond
-#                   ((or (= (last (chop X)) ":") (pre? "." Next)) NIL)
-#                   ((and (=1 I) (> (length Cdr) 1))
-#                      (prin ", ") )
-#                   ((and (> I 1) (not (= I (length Cdr))))
-#                      (prin ", ") ) ) ) )
-#          (prin (char 41)) ) ) )
+(de spl-run-fn (Form)
+   (let [(Car . Cdr) Form]
+      (prog
+         (prin (pl-to-rb Car) (char 40))
+         (for (I . X) Cdr
+            (let [Next (car (nth Cdr (+ I 1)))
+                  Prev (car (nth Cdr (- I 1))) ]
+               (cond
+                  ((pair X)
+                     (if (spl-array? X)
+                        # arrays
+                        (prog
+                           (if (spl-array? Prev) (prin ", ") (prin " "))
+                           (prin "[" (glue "," X) "]") )
+                        # lists
+                        (cond
+                           # variables
+                           ((= (car X) '=)
+                              (prog
+                                 (unless (=1 I) (prin " "))
+                                 (spl-run-var X)
+                                 (prin ";") ) )
+                           # ((member (car X) *SplFns)
+                           #    (prog
+                           #       (unless (=1 I) (prin " "))
+                           #       (spl-run-fn X) ) )
+                           ((or (member (car X) *SplBlockFns) (sub? ".times" (car X)))
+                              (prog
+                                 (unless (=1 I) (prin " "))
+                                 (spl-run-block-fn X) ) )
+                           # (T (eval X))
+                           (T (prog
+                                 (unless (=1 I) (prin " "))
+                                 (spl-run-fn X) ) ) ) ) )
+                  # .functions
+                  ((pre? "." X) (prin X))
+                  ((sub? "." Prev) (prin "," X))
+                  # arg list, e.g. |x| or |x y|
+                  ((sub? "||" (pack (sort (chop X))))
+                     (prin " " (lowc1 X)) )
+                  ((pre? "|" X)
+                     (prog (on ArgsOn) (prin " " (lowc1 X))) )
+                  ((= (last (chop X)) "|")
+                     (prog (off ArgsOn) (prin " " (lowc1 X))) )
+                  # opts
+                  ((= (last (chop X)) ":")
+                     (prin ", " X) )
+                  ((pre? ":" Prev) (prin "," X))
+                  # numbers
+                  ((format Prev *Scl) (prin "," X))
+                  ((spl-opt? Prev) (prin " " X))
+                  # ((and Prev (sym? Prev)) (prin "," X))
+                  (T (prin (unless (=1 I) " ") X) ) ) ) )
+         (prin (char 41)) ) ) )
 
-(de spl-array? (X)
-   (or (num? (car X)) (str? (car X)) (pre? ":" (car X))) )
+(de spl-run-var (Form)
+   (++ Form)  # discard '=' sym
+   (let [(Car . Cdr) Form]
+      (prog
+         (prin (pl-to-rb Car) " = ")
+         (for (I . X) Cdr
+            (let [Next (car (nth Cdr (+ I 1)))
+                  Prev (car (nth Cdr (- I 1))) ]
+               (cond
+                  ((pair X)
+                     (if (spl-array? X)
+                        # arrays
+                        (prog
+                           (if (spl-array? Prev) (prin ", ") (prin " "))
+                           (prin "[" (glue "," X) "]") )
+                        # lists
+                        (cond
+                           # variables
+                           ((= (car X) '=)
+                              (prog
+                                 (unless (=1 I) (prin " "))
+                                 (spl-run-var X)
+                                 (prin ";") ) )
+                           # functions
+                           # ((member (car X) *SplFns)
+                           #    (prog
+                           #       # (prin " ")
+                           #       (unless (=1 I) (prin " "))
+                           #       (spl-run-fn X) ) )
+                           # blocks
+                           ((or (member (car X) *SplBlockFns) (sub? ".times" (car X)))
+                              (prog
+                                 # (prin " ")
+                                 (unless (=1 I) (prin " "))
+                                 (spl-run-block-fn X) ) )
+                           # # lisp, most likely
+                           # (T (eval X))
+                           (T
+                              (prog
+                                 # (prin " ")
+                                 (unless (=1 I) (prin " "))
+                                 (spl-run-fn X) ) ) ) ) )
+                  # .functions
+                  ((pre? "." X) (prin X))
+                  ((pre? "." Prev) (prin "," X))
+                  # arg list, e.g. |x| or |x y|
+                  ((sub? "||" (pack (sort (chop X)))) (prin " " X))
+                  ((pre? "|" X) (prog (on ArgsOn) (prin " " X)))
+                  ((= (last (chop X)) "|") (prog (off ArgsOn) (prin " " X)))
+                  # opts
+                  ((= (last (chop X)) ":")
+                     (prin ", " X) )
+                  # numbers
+                  ((format Prev *Scl) (prin "," X))
+                  (T (prin (unless (=1 I) " ") X)) ) ) ) ) ) )
 
-(scl 4) # seems the best for sonic-pi
+(de spl-run-block-fn (Form)
+   (let [(Car . Cdr) Form]
+      (prog
+         (prin (pl-to-rb Car))
+         (let ArgsOn NIL
+            (for (I . X) Cdr
+               (if ArgsOn (prin ","))
+               (let [Next (car (nth Cdr (+ I 1)))
+                     Prev (car (nth Cdr (- I 1))) ]
+                  (cond
+                     ((pair X)
+                        (if (spl-array? X)
+                           # arrays
+                           (prog
+                              (if (spl-array? Prev) (prin ", ") (prin " "))
+                              (prin "[" (glue "," X) "]") )
+                           # lists
+                           (cond
+                              # variables
+                              ((= (car X) '=)
+                                 (prog
+                                    (unless (=1 I) (prin " "))
+                                    (spl-run-var X)
+                                    (prin ";") ) )
+                              # ((member (car X) *SplFns)
+                              #    (prog
+                              #       (prin " ")
+                              #       (spl-run-fn X)
+                              #       (unless (spl-opt? Prev) (prin ";")) ) )
+                              # ((member (car X) *SplBlockFns)
+                              ((or (member (car X) *SplBlockFns) (sub? ".times" (car X)))
+                                 (prog
+                                    (prin " ")
+                                    (spl-run-block-fn X)
+                                    (prin ";") ) )
+                              # (T (eval X))
+                              (T (prog
+                                 (prin " ")
+                                 (spl-run-fn X)
+                                 (unless (spl-opt? Prev) (prin ";")) ) ) ) ) )
+                     # .functions
+                     ((pre? "." X) (prin X))
+                     # arg list, e.g. |x| or |x y|
+                     ((sub? "||" (pack (sort (chop X)))) (prin " " (lowc1 X)))
+                     ((pre? "|" X) (prog (on ArgsOn) (prin " " (lowc1 X))))
+                     ((= (last (chop X)) "|") (prog (off ArgsOn) (prin " " (lowc1 X))))
+                     # opts
+                     ((= (last (chop X)) ":")
+                        (prin ", " X) )
+                     # # local vars (via |...|) -- this feels like a hack
+                     # ((upp? (car (chop X)))
+                     #    (prin (lowc1 X) ",") )
+                     # numbers
+                     # ((format Prev *Scl) (prin "," X))
+                     (T (prin " " X)) )
+                  ) ) )
+         (prin " end") ) ) )
 
 ### sonic picolisp preprocessor
 #
 # - numbers to strings (0.125 -> "0.125")
 # - pl symbols to rb symbols (do-something -> do_something)
 
-# (de spl-preprocess (X)
-#    (recur (X Acc)
-#       (ifn X
-#          (flip Acc)
-#             (cond
-#                # format numbers for printing (damnit picolisp)
-#                ((and (num? (car X)) (>= (length @) *Scl))
-#                   (recurse (cdr X) (cons (format (car X) *Scl) Acc)) )
-#                # dashes to underscores
-#                ((sym? (car X))
-#                   (let Sym
-#                         (if (and (not (spl-fn? (car X))) (sub? "-" (car X)))
-#                            (any (pl-to-rb (car X)))
-#                            (car X) )
-#                      (recurse (cdr X) (cons Sym Acc)) ) )
-#                # recurse down car / cdr
-#                ((pair (car X))
-#                      (recurse (cdr X) (cons (recurse (car X) NIL) Acc)) )
-#                (T (recurse (cdr  X) (cons (car X) Acc))) ) ) ) )
-
-(de spl-fn? (Sym)
-   (member Sym (append *SplBlockFns *SplFns)) )
-
-(de spl-opt? (Sym)
-   (= (last (chop Sym)) ":") )
-
-## prototype block functions
-#(de live-loop Lst
-#   (let [(Nm Args . Rst) Lst]
-#      (prin "live_loop " Nm " do ")
-#      (spl-fn-args Args)
-#      (prin " ")
-#      (spl-run-forms Rst)
-#      (prin "end") ) )
-
-## current
-##
-##  (with-fx :reverb (play 60))
-##  (with-fx :reverb (mix: 2) (fx)
-##     (play 60)
-##     (control fx mix: 0.2)
-##     (play 60) )
-
-## damnit ruby syntax
-#(de with-fx Lst
-#   (let [(Nm . Rst) Lst]
-#      (prin "with_fx " Nm)
-#      (let Do NIL
-#         (for X Rst
-#            (cond
-#               ((pair X)
-#                  (cond
-#                     ((spl-opt? (car X))
-#                        (prog
-#                           (prin ", ")
-#                           (spl-run-opts X) ) )
-#                     ((spl-fn? (car X))
-#                        (prog
-#                           (unless Do (prin " do "))
-#                           (on Do)
-#                           (macro (spl-run-forms '(( ^ X))) )) )
-#                     (T (prog
-#                           (unless Do (prin " do "))
-#                           (on Do)
-#                           (prin "|" (glue "," X) "| ") ) ) ) ) ) ) )
-#      (prin "end") ) )
-
-(de spl-fn-args (Xs)
-   (prin "|" (glue "," (mapc lowc1 Xs)) "|") )
-
-# # mostly the same as 'spl-run-fn'
-# (de spl-run-opts (Xs)
-#    (for (I . X) Xs
-#       (let Next (car (nth Xs (+ I 1)))
-#          (cond
-#             ((pair X)
-#                (if (or (num? (car X)) (str? (car X)) (pre? ":" (car X)))
-#                   (prin "[" (glue "," X) "]")  # arrays
-#                   (if (member (car X) *SplFns)
-#                      (spl-run-fn X)
-#                      (eval X) ) ) )
-#             ((pre? "." X) (prin X))
-#             ((= (last (chop X)) ":")
-#                (prin X " ") )
-#             (T (prin X)) )
-#          # print commas unless it's an 'opt:' or '.function'
-#          (cond
-#             ((or (= (last (chop X)) ":") (pre? "." Next)) NIL)
-#             ((and (=1 I) (> (length Xs) 1))
-#                (prin ", ") )
-#             ((and (> I 1) (not (= I (length Xs))))
-#                (prin ", ") ) ) ) ) )
-
-# (de times Lst
-#    (let [(N . Rst) Lst]
-#       (prin N ".times do ")
-#       (spl-run-forms Rst)
-#       (prin "end")))
-
-# (setq *SplBlockFns
-#    (quote
-#       live-loop with-fx times
-# ) )
-
-# (setq *SplFns
-#    (quote
-#       choose chord chord-degree chord-invert
-#       control cue dice doubles factor? halves
-#       hz-to-midi knit load-buffer
-#       load-sample load-samples load-synthdefs
-#       midi-notes midi-to-hz note note-range
-#       octs one-in pitch-to-ratio play
-#       play-chord play-pattern
-#       play-pattern-timed quantise ramp
-#       rand-back rand-i rand-reset rand-skip
-#       ratio-to-pitch rdist reset-mixer!
-#       rest? ring rrand rrand-i rt sample
-#       sample-duration
-#       sample-free sample-free-all scale
-#       set-cent-tuning! set-control-delta!
-#       set-mixer-control! set-schedule-ahead-time!
-#       set-volume! shuffle sleep spread stretch
-#       sync-bpm synth synth-names
-#       tick-reset tick-reset-all tick-set
-#       use-bpm use-bpm-mul use-cent-tuning
-#       use-octave use-random-seed use-sample-bpm
-#       use-sample-defaults use-sample-pack
-#       use-synth
-#       use-timing-guarantees use-transpose
-#       use-tuning vector vt
-#       # need to figure out namespacing
-#       sync rand inc dec kill line look pick range
-# ) )
+(de spl-preprocess (X)
+   (recur (X Acc)
+      (ifn X
+         (flip Acc)
+            (cond
+               # format numbers for printing (damnit picolisp)
+               ((and (num? (car X)) (or (>= (length (car X)) *Scl) (< 99 (car X) 1000)))
+                  (recurse (cdr X) (cons (format (car X) *Scl) Acc)) )
+               # dashes to underscores
+               ((sym? (car X))
+                  (let Sym
+                        (if (and (> (length (car X)) 1) (sub? "-" (car X)))
+                           (any (pl-to-rb (car X)))
+                           (car X) )
+                     (recurse (cdr X) (cons Sym Acc)) ) )
+               # recurse down car / cdr
+               ((pair (car X))
+                     (recurse (cdr X) (cons (recurse (car X) NIL) Acc)) )
+               (T (recurse (cdr  X) (cons (car X) Acc))) ) ) ) )
 
 
-# alternate
+(scl 4) # seems the best for sonic-pi
+
 (setq *SplBlockFns
    (quote
       at
@@ -295,6 +313,19 @@
 
 # utils
 
+(de spl-fn? (Sym)
+   (member Sym (append *SplBlockFns *SplFns)) )
+
+(de spl-opt? (Sym)
+   (= (last (chop Sym)) ":") )
+
+(de spl-array? (X)
+   (or (num? (car X)) (str? (car X)) (pre? ":" (car X))) )
+
+(de spl-fn-args (Xs)
+   (prin "|" (glue "," (mapc lowc1 Xs)) "|") )
+
+
 # picolisp symbol to ruby symbol
 (de pl-to-rb (Sym) (pack (replace (chop Sym) "-" "_")))
 
@@ -315,12 +346,48 @@
             ^ Rest ))))
 
 
-# tests
-(test '(play 60 release: "1.5000") (spl-preprocess '(play 60 release: 1.5)))
+(de times Lst
+   (let [(N . Rst) Lst]
+      (prin N ".times do ")
+      (spl-run-forms Rst)
+      (prin "end")))
+
+
+# (sp ...) -- send to sonic pi
+# (sp T ...) -- print to stdout (debug)
+(de sp Lst
+   (if (=T (car Lst))
+      (macro (t (spl-debug ^ (cdr Lst))))
+      (macro (spl ^ Lst)) ) )
+
+
+### examples / tests
+
+# define new example
+#
+#  (sp-example ex-blah
+#     (live-loop :blah do
+#        ... ) )
+#
+# call it
+#
+#  (ex-blah) -- send to sonic pi
+#  (ex-blah T) -- debug
+
+(de sp-example Lst
+   (let [(@Nm . Rst) Lst]
+      (macro
+         (de @Nm (Flg)
+            ((ifn Flg 'spl 'spl-debug)
+               ^ Rst ) ) ) ) )
+
+(def 'spex sp-example)
+
+(test '(do_something 60 release: "1.5000") (spl-preprocess '(do-something 60 release: 1.5)))
 
 # should play a lame industrial beat in c minor
 (de spl-sound-check ()
-   (spl%
+   (spl
       (live-loop :notz do
          (play (chord :c3 :minor7).choose)
          (sleep 0.5) )
@@ -339,9 +406,9 @@
 
 
 (de sound-check-amen-dnb ()
-   (spl-debug%
+   (spl-debug
       (use-sample-bpm :loop-amen)
-      (with-fx :rlpf cutoff: 10 cutoff-slide: 4 do |c|
+      (with-fx :rlpf  cutoff: 10 cutoff-slide: 4  do |c|
          (live-loop :dnb do
             (sample :bass-dnb-f amp: 5)
             (sample :loop-amen amp: 5)
@@ -349,217 +416,37 @@
             (control c cutoff: (rrand 40 120) cutoff-slide: (rrand 1 4)) ) ) ) )
 
 
-
-# alternate implementation
-(de spl% Xs
-   (out (tmp "sonic-pi")
-      (spl-run-forms% (mapcar spl-preprocess Xs)) )
-   (spt-eval-file (tmp "sonic-pi")) )
-
-(de spl-debug% Xs
-   (spl-run-forms% (mapcar spl-preprocess Xs)) )
-
-(de spl-run-forms% (Xs)
-   (for X Xs
-      (cond
-         ((= (car X) '=)
-            (spl-run-var X) )
-         ((member (car X) *SplFns)
-            (spl-run-fn X) )
-         ((member (car X) *SplBlockFns)
-            (spl-run-block-fn X) )
-         (T (eval X)) )
-      (prin ";") ) )
-
-(de spl-run-fn (Form)
-   (let [(Car . Cdr) Form]
-      (prog
-         (prin (pl-to-rb Car) (char 40))
-         (for (I . X) Cdr
-            (let [Next (car (nth Cdr (+ I 1)))
-                  Prev (car (nth Cdr (- I 1))) ]
-               (cond
-                  ((pair X)
-                     (if (spl-array? X)
-                        # arrays
-                        (prog
-                           (if (spl-array? Prev) (prin ", ") (prin " "))
-                           (prin "[" (glue "," X) "]") )
-                        # lists
-                        (cond
-                           # variables
-                           ((= (car X) '=)
-                              (prog
-                                 (unless (=1 I) (prin " "))
-                                 (spl-run-var X)
-                                 (prin ";") ) )
-                           ((member (car X) *SplFns)
-                              (prog
-                                 # (prin " ")
-                                 (unless (=1 I) (prin " "))
-                                 (spl-run-fn X) ) )
-                           ((member (car X) *SplBlockFns)
-                              (prog
-                                 # (prin " ")
-                                 (unless (=1 I) (prin " "))
-                                 (spl-run-block-fn X) ) )
-                           (T (eval X)) ) ) )
-                  # .functions
-                  ((pre? "." X) (prin X))
-                  # arg list, e.g. |x| or |x y|
-                  ((sub? "||" (pack (sort (chop X))))
-                     (prin " " X))
-                  ((pre? "|" X)
-                     (prog (on ArgsOn) (prin " " X)))
-                  ((= (last (chop X)) "|")
-                     (prog (off ArgsOn) (prin " " X)))
-                  # opts
-                  ((= (last (chop X)) ":")
-                     (prin ", " X) )
-                  ((pre? ":" Prev) (prin "," X))
-                  # numbers
-                  ((format Prev *Scl) (prin "," X))
-                  (T (prin (unless (=1 I) " ") X)) ) ) )
-         (prin (char 41)) ) ) )
-
-(de spl-run-var (Form)
-   (++ Form)  # discard '=' sym
-   (let [(Car . Cdr) Form]
-      (prog
-         (prin (pl-to-rb Car) " = ")
-         (for (I . X) Cdr
-            (let [Next (car (nth Cdr (+ I 1)))
-                  Prev (car (nth Cdr (- I 1))) ]
-               (cond
-                  ((pair X)
-                     (if (spl-array? X)
-                        # arrays
-                        (prog
-                           (if (spl-array? Prev) (prin ", ") (prin " "))
-                           (prin "[" (glue "," X) "]") )
-                        # lists
-                        (cond
-                           # variables
-                           ((= (car X) '=)
-                              (prog
-                                 (unless (=1 I) (prin " "))
-                                 (spl-run-var X)
-                                 (prin ";") ) )
-                           # functions
-                           ((member (car X) *SplFns)
-                              (prog
-                                 # (prin " ")
-                                 (unless (=1 I) (prin " "))
-                                 (spl-run-fn X) ) )
-                           # blocks
-                           ((member (car X) *SplBlockFns)
-                              (prog
-                                 # (prin " ")
-                                 (unless (=1 I) (prin " "))
-                                 (spl-run-block-fn X) ) )
-                           # lisp, most likely
-                           (T (eval X)) ) ) )
-                  # .functions
-                  ((pre? "." X) (prin X))
-                  # arg list, e.g. |x| or |x y|
-                  ((sub? "||" (pack (sort (chop X)))) (prin " " X))
-                  ((pre? "|" X) (prog (on ArgsOn) (prin " " X)))
-                  ((= (last (chop X)) "|") (prog (off ArgsOn) (prin " " X)))
-                  # opts
-                  ((= (last (chop X)) ":")
-                     (prin ", " X) )
-                  # numbers
-                  ((format Prev *Scl) (prin "," X))
-                  (T (prin (unless (=1 I) " ") X)) ) ) ) ) ) )
-
-(de spl-run-block-fn (Form)
-   (let [(Car . Cdr) Form]
-      (prog
-         (prin (pl-to-rb Car))
-         (let ArgsOn NIL
-            (for (I . X) Cdr
-               (if ArgsOn (prin ","))
-               (let [Next (car (nth Cdr (+ I 1)))
-                     Prev (car (nth Cdr (- I 1))) ]
-                  (cond
-                     ((pair X)
-                        (if (spl-array? X)
-                           # arrays
-                           (prog
-                              (if (spl-array? Prev) (prin ", ") (prin " "))
-                              (prin "[" (glue "," X) "]") )
-                           # lists
-                           (cond
-                              # variables
-                              ((= (car X) '=)
-                                 (prog
-                                    (unless (=1 I) (prin " "))
-                                    (spl-run-var X)
-                                    (prin ";") ) )
-                              ((member (car X) *SplFns)
-                                 (prog
-                                    (prin " ")
-                                    (spl-run-fn X)
-                                    (unless (spl-opt? Prev) (prin ";")) ) )
-                              ((member (car X) *SplBlockFns)
-                                 (prog
-                                    (prin " ")
-                                    (spl-run-block-fn X)
-                                    (prin ";") ) )
-                              (T (eval X)) ) ) )
-                     # .functions
-                     ((pre? "." X) (prin X))
-                     # arg list, e.g. |x| or |x y|
-                     ((sub? "||" (pack (sort (chop X)))) (prin " " X))
-                     ((pre? "|" X) (prog (on ArgsOn) (prin " " X)))
-                     ((= (last (chop X)) "|") (prog (off ArgsOn) (prin " " X)))
-                     # opts
-                     ((= (last (chop X)) ":")
-                        (prin ", " X) )
-                     # numbers
-                     # ((format Prev *Scl) (prin "," X))
-                     (T (prin " " X)) )
-                  ) ) )
-         (prin " end") ) ) )
-
-(de spl-preprocess (X)
-   (recur (X Acc)
-      (ifn X
-         (flip Acc)
-            (cond
-               # format numbers for printing (damnit picolisp)
-               ((and (num? (car X)) (or (>= (length (car X)) *Scl) (< 99 (car X) 1000)))
-                  (recurse (cdr X) (cons (format (car X) *Scl) Acc)) )
-               # dashes to underscores
-               ((sym? (car X))
-                  (let Sym
-                        (if (and (> (length (car X)) 1) (sub? "-" (car X)))
-                           (any (pl-to-rb (car X)))
-                           (car X) )
-                     (recurse (cdr X) (cons Sym Acc)) ) )
-               # recurse down car / cdr
-               ((pair (car X))
-                     (recurse (cdr X) (cons (recurse (car X) NIL) Acc)) )
-               (T (recurse (cdr  X) (cons (car X) Acc))) ) ) ) )
-
-(de times Lst
-   (let [(N . Rst) Lst]
-      (prin N ".times do ")
-      (spl-run-forms% Rst)
-      (prin "end")))
-
-
-# examples / tests
 (de ex-basic-variable ()
-   (spl%
+   (spl
       (= s (synth :prophet note: 60 release: 5 cutoff: 60))
       (sleep 1)
       (control s cutoff: 80)
       (sleep 1)
       (control s cutoff: "100") ) )  # bug with 0.01 and 100, etc
 
+(de ex-basic-functions ()
+   (spl
+      (define :ratio do |note x y|
+         (play (hz-to-midi (midi-to-hz note) * x / y)) )
+      (ratio :c4 1 1)
+      (ratio :c4 5 4)
+      (ratio :c4 3 2)
+      (ratio :c4 7 4) ) )
+
+# BROKEN
+(de ex-layering-functions ()
+   (spl-debug
+      (define :just-7th-chord do |note|
+         (ratio note 1 1)
+         (ratio note 5 4)
+         (ratio note 3 2)
+         (ratio note 7 4) )
+      (sleep 1)
+      (just-7th-chord :d4) ) )
+
+
 (de ex-ambient-experiment ()
-   (spl%
+   (spl
       (use-synth :hollow)
       (with-fx :reverb mix: 0.7 do
          (live-loop :note1 do
@@ -574,7 +461,7 @@
 
 # lower volume a bit, kinda loud
 (de ex-jungle ()
-   (spl%
+   (spl
       (with-fx :lpf  cutoff: 90  do
          (with-fx :reverb  mix: 0.5  do
             (with-fx :compressor  pre-amp: 20  do
@@ -592,7 +479,7 @@
                         (sleep 1) ) ) ) ) ) ) ) )
 
 (de ex-fm-noise ()
-   (spl%
+   (spl
       (use-synth :fm)
       (live-loop :sci-fi do
          (= player
@@ -607,7 +494,7 @@
          (sleep [0.5 1 2].choose) ) ) )
 
 (de ex-reich-phase ()
-   (spl%
+   (spl
       (= reich-notes (ring :E4 :Fs4 :B4))
       (live-loop :slower do
          (play reich-notes.tick release: 0.1)
@@ -615,3 +502,99 @@
       (live-loop :faster do
          (play reich-notes.tick release: 0.1)
          (sleep 0.296) ) ) )
+
+
+(de ex-tron-bike ()
+   (spl
+      (use-random-seed 10)
+      (= notes (ring :b1 :b2 :e1 :e2 :b3 :e3))
+      (live-loop :tron do
+         (with-synth :dsaw do
+            (with-fx :slicer phase: [0.25 0.125].choose do
+               (with-fx :reverb room: 0.5 mix: 0.3 do
+                  (= n1 (chord notes.choose :minor).choose)
+                  (= n2 (chord notes.choose :minor).choose)
+                  (= p (play n1 amp: 2 release: 8 note-slide: 4 cutoff: 30 cutoff-slide: 4 detune: (rrand 0 0.2)))
+                  (control p note: n2 cutoff: (rrand 80 120)) ) ) )
+         (sleep 8) ) ) )
+
+(sp-example ex-turbo-test
+   (play 60)
+   (sleep 1)
+   (play 64) )
+
+
+# Broken
+(spex ex-acid
+   (use-debug false)
+   (load-sample :bd-fat)
+
+   (8.times do
+      (sample :bd-fat  amp: (line 0 5 steps: 8).tick)
+      (sleep 0.5) )
+
+   (live-loop :drums do
+      (sample :bd-fat amp: 5)
+      (sleep 0.5) )
+
+   (live-loop :acid do
+      (cue :foo)
+      (4.times do |i|
+         (use-random-seed 667)
+         (16.times do
+            (use-synth :tb303)
+            (play (chord :e3 :minor).choose
+               attack: 0
+               release: 0.1
+               cutoff: (rrand-i 50 90) + i * 10 )
+            (sleep 0.125) ) ) )
+
+      (cue :bar)
+      (32.times do |i|
+         (use-synth :tb303)
+         (play (chord :a3 :minor).choose
+            attack: 0
+            release: 0.1
+            cutoff: (rrand-i 70 98) + i
+            res: (rrand 0.9 0.95) )
+         (sleep 0.125) )
+
+      (cue :quux)
+      (in-thread do
+         (use-random-seed 668)
+         (with-fx :echo  phase: 0.125  do
+            (16.times do
+               (use-synth :tb303)
+               (play (chord :a :minor).choose
+                  attack: 0
+                  release: 0.1
+                  cutoff: (rrand 50 100))
+               (sleep 0.25) ) ) )
+
+      (sleep 4)
+)
+
+# kinda works
+(spex ex-ambient
+
+   (load-samples (sample-names :ambi))
+   (sleep 2)
+
+   (with_fx :reverb mix: 0.8 do
+     (live_loop :foo do
+       # try changing the sp_ vars..
+       (= sp-name (choose (sample_names :ambi)))
+       # sp_name = choose sample_names :drum
+       (= sp-time [1 2].choose)
+       #sp_time = 0.5
+       (= sp-rate 1)
+       #sp_rate = 4
+
+       (= s (sample sp-name
+               amp: 2
+               cutoff: (rrand 70 130)
+               rate: sp-rate * (choose [0.5 1])
+               pan: (rrand -1 1)
+               pan-slide: sp-time ) )
+       (control s pan: (rrand 1 1))
+       (sleep sp-time) ) ) )
