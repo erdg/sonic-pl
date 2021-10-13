@@ -1,4 +1,41 @@
+### utils
+(de spl-fn? (Sym)
+   (member Sym (append *SplBlockFns *SplFns)) )
+
+(de spl-opt? (Sym)
+   (= (last (chop Sym)) ":") )
+
+(de spl-array? (X)
+   (or (num? (car X)) (str? (car X)) (pre? ":" (car X))) )
+
+(de spl-fn-args (Xs)
+   (prin "|" (glue "," Xs) "|") )
+
+# picolisp symbol to ruby symbol
+(de pl-to-rb (Sym) (pack (replace (chop Sym) "-" "_")))
+
+# convert first char of string to lowercase
+(de lowc1 (Str)
+   (let C (chop Str)
+      (pack
+         (cons
+            (lowc (car C))
+            (cdr C) ) ) ) )
+
+# abbrevation for common pattern in this code
+(de sh (@Str . Rest)
+   (macro
+      (call 'sh "-c"
+         (text @Str
+            ^ Rest ))))
+
+
+
+### sonic pi tool
+#
 # pass ruby code (as string) to sonic pi server
+#
+# -- see https://github.com/emlyn/sonic-pi-tool
 
 # (spt-eval "play 66, sustain: 2")
 (de spt-eval (Str)
@@ -14,7 +51,6 @@
 # very important
 (de stop () (sh "sonic-pi-tool.py stop"))
 
-# -- see https://github.com/emlyn/sonic-pi-tool
 
 
 # sonic picolisp code
@@ -311,54 +347,6 @@
       vector version vt
       wait ) )
 
-# utils
-
-(de spl-fn? (Sym)
-   (member Sym (append *SplBlockFns *SplFns)) )
-
-(de spl-opt? (Sym)
-   (= (last (chop Sym)) ":") )
-
-(de spl-array? (X)
-   (or (num? (car X)) (str? (car X)) (pre? ":" (car X))) )
-
-(de spl-fn-args (Xs)
-   (prin "|" (glue "," (mapc lowc1 Xs)) "|") )
-
-
-# picolisp symbol to ruby symbol
-(de pl-to-rb (Sym) (pack (replace (chop Sym) "-" "_")))
-
-# convert first char of string to lowercase
-(de lowc1 (Str)
-   (let C (chop Str)
-      (pack
-         (cons
-            (lowc (car C))
-            (cdr C) ) ) ) )
-
-
-# abbrevation for a common pattern in this code
-(de sh (@Str . Rest)
-   (macro
-      (call 'sh "-c"
-         (text @Str
-            ^ Rest ))))
-
-
-(de times Lst
-   (let [(N . Rst) Lst]
-      (prin N ".times do ")
-      (spl-run-forms Rst)
-      (prin "end")))
-
-
-# (sp ...) -- send to sonic pi
-# (sp T ...) -- print to stdout (debug)
-(de sp Lst
-   (if (=T (car Lst))
-      (macro (t (spl-debug ^ (cdr Lst))))
-      (macro (spl ^ Lst)) ) )
 
 
 ### examples / tests
