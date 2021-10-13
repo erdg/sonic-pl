@@ -374,140 +374,153 @@
 
 (def 'spex sp-example)
 
+
 (test '(do_something 60 release: "1.5000") (spl-preprocess '(do-something 60 release: 1.5)))
 
+
 # should play a lame industrial beat in c minor
-(de spl-sound-check ()
-   (spl
-      (live-loop :notz do
-         (play (chord :c3 :minor7).choose)
-         (sleep 0.5) )
-      (live-loop :padz do
-         (sync :notz)
-         (synth :prophet notes: (chord :c4 :minor7) release: 3)
-         (sleep 4) )
-      (live-loop :bazz do
-         (sync :notz)
-         (synth :tb303 note: :c2 release: 3 amp: 0.4)
-         (sleep 4) )
-      (live-loop :bd do
-         (sync :notz)
-         (sample :bd_haus)
-         (sleep 1) ) ) )
+(spex ex-lame-industrial
+   (live-loop :notz do
+      (play (chord :c3 :minor7).choose)
+      (sleep 0.5) )
+   (live-loop :padz do
+      (sync :notz)
+      (synth :prophet notes: (chord :c4 :minor7) release: 3)
+      (sleep 4) )
+   (live-loop :bazz do
+      (sync :notz)
+      (synth :tb303 note: :c2 release: 3 amp: 0.4)
+      (sleep 4) )
+   (live-loop :bd do
+      (sync :notz)
+      (sample :bd_haus)
+      (sleep 1) ) )
 
 
-(de sound-check-amen-dnb ()
-   (spl-debug
-      (use-sample-bpm :loop-amen)
-      (with-fx :rlpf  cutoff: 10 cutoff-slide: 4  do |c|
-         (live-loop :dnb do
-            (sample :bass-dnb-f amp: 5)
-            (sample :loop-amen amp: 5)
-            (sleep 1)
-            (control c cutoff: (rrand 40 120) cutoff-slide: (rrand 1 4)) ) ) ) )
+(spex ex-filtered-dnb
+   (use-sample-bpm :loop-amen)
+   (with-fx :rlpf  cutoff: 10 cutoff-slide: 4  do |c|
+      (live-loop :dnb do
+         (sample :bass-dnb-f amp: 5)
+         (sample :loop-amen amp: 5)
+         (sleep 1)
+         (control c cutoff: (rrand 40 120) cutoff-slide: (rrand 1 4)) ) ) )
 
 
-(de ex-basic-variable ()
-   (spl
-      (= s (synth :prophet note: 60 release: 5 cutoff: 60))
-      (sleep 1)
-      (control s cutoff: 80)
-      (sleep 1)
-      (control s cutoff: "100") ) )  # bug with 0.01 and 100, etc
+(spex ex-basic-variable
+   (= s (synth :prophet note: 60 release: 5 cutoff: 60))
+   (sleep 1)
+   (control s cutoff: 80)
+   (sleep 1)
+   (control s cutoff: 100) )
 
-(de ex-basic-functions ()
-   (spl
-      (define :ratio do |note x y|
-         (play (hz-to-midi (midi-to-hz note) * x / y)) )
-      (ratio :c4 1 1)
-      (ratio :c4 5 4)
-      (ratio :c4 3 2)
-      (ratio :c4 7 4) ) )
+
+(spex ex-basic-functions
+   (define :ratio do |note x y|
+      (play (hz-to-midi (midi-to-hz note) * x / y)) )
+   (ratio :c4 1 1)
+   (ratio :c4 5 4)
+   (ratio :c4 3 2)
+   (ratio :c4 7 4) )
+
 
 # BROKEN
-(de ex-layering-functions ()
-   (spl-debug
-      (define :just-7th-chord do |note|
-         (ratio note 1 1)
-         (ratio note 5 4)
-         (ratio note 3 2)
-         (ratio note 7 4) )
-      (sleep 1)
-      (just-7th-chord :d4) ) )
+(spex ex-layering-functions
+   (define :just-7th-chord do |note|
+      (ratio note 1 1)
+      (ratio note 5 4)
+      (ratio note 3 2)
+      (ratio note 7 4) )
+   (sleep 1)
+   (just-7th-chord :d4) )
 
 
-(de ex-ambient-experiment ()
-   (spl
-      (use-synth :hollow)
-      (with-fx :reverb mix: 0.7 do
-         (live-loop :note1 do
-            (play [:D4 :E4].choose attack: 6 release: 6)
-            (sleep 8) )
-         (live-loop :note2 do
-            (play [:Fs4 :G4].choose attack: 4 release: 5)
-            (sleep 8) )
-         (live-loop :note3 do
-            (play [:A4 :Cs5].choose attack: 5 release: 5)
-            (sleep 8) ) ) ) )
-
-# lower volume a bit, kinda loud
-(de ex-jungle ()
-   (spl
-      (with-fx :lpf  cutoff: 90  do
-         (with-fx :reverb  mix: 0.5  do
-            (with-fx :compressor  pre-amp: 20  do
-               (with-fx :distortion  distort: 0.4  do
-                  (live-loop :jungle do
-                     (use-random-seed 667)
-                     (times 4
-                        (sample :loop-amen
-                           beat-stretch: 1
-                           rate: [1 1 1 -1].choose / 2
-                           finish: 0.5
-                           amp: 0.1 )
-                        (sample :loop-amen
-                           beat-stretch: 1 )
-                        (sleep 1) ) ) ) ) ) ) ) )
-
-(de ex-fm-noise ()
-   (spl
-      (use-synth :fm)
-      (live-loop :sci-fi do
-         (= player
-            (play (chord :Eb3 :minor).choose
-               divisor: 0.0100
-               div-slide: (rrand 0 10)
-               depth: (rrand "0.001" 2)
-               attack: 0.01
-               release: (rrand 0 5)
-               amp: 0.5 ) )
-         (control player divisor: (rrand "0.001" 50))
-         (sleep [0.5 1 2].choose) ) ) )
-
-(de ex-reich-phase ()
-   (spl
-      (= reich-notes (ring :E4 :Fs4 :B4))
-      (live-loop :slower do
-         (play reich-notes.tick release: 0.1)
-         (sleep 0.3) )
-      (live-loop :faster do
-         (play reich-notes.tick release: 0.1)
-         (sleep 0.296) ) ) )
-
-
-(de ex-tron-bike ()
-   (spl
-      (use-random-seed 10)
-      (= notes (ring :b1 :b2 :e1 :e2 :b3 :e3))
-      (live-loop :tron do
-         (with-synth :dsaw do
-            (with-fx :slicer phase: [0.25 0.125].choose do
-               (with-fx :reverb room: 0.5 mix: 0.3 do
-                  (= n1 (chord notes.choose :minor).choose)
-                  (= n2 (chord notes.choose :minor).choose)
-                  (= p (play n1 amp: 2 release: 8 note-slide: 4 cutoff: 30 cutoff-slide: 4 detune: (rrand 0 0.2)))
-                  (control p note: n2 cutoff: (rrand 80 120)) ) ) )
+(spex ex-ambient-experiment
+   (use-synth :hollow)
+   (with-fx :reverb mix: 0.7 do
+      (live-loop :note1 do
+         (play [:D4 :E4].choose attack: 6 release: 6)
+         (sleep 8) )
+      (live-loop :note2 do
+         (play [:Fs4 :G4].choose attack: 4 release: 5)
+         (sleep 8) )
+      (live-loop :note3 do
+         (play [:A4 :Cs5].choose attack: 5 release: 5)
          (sleep 8) ) ) )
+
+
+(spex ex-jungle
+   (with-fx :lpf  cutoff: 90  do
+      (with-fx :reverb  mix: 0.5  do
+         (with-fx :compressor  pre-amp: 20  do
+            (with-fx :distortion  distort: 0.4  do
+               (live-loop :jungle do
+                  (use-random-seed 667)
+                  (4.times do
+                     (sample :loop-amen
+                        beat-stretch: 1
+                        rate: [1 1 1 -1].choose / 2
+                        finish: 0.5
+                        amp: 0.1 )
+                     (sample :loop-amen
+                        beat-stretch: 1 )
+                     (sleep 1) ) ) ) ) ) ) )
+
+
+(spex ex-fm-noise
+   (use-synth :fm)
+   (live-loop :sci-fi do
+      (= player
+         (play (chord :Eb3 :minor).choose
+            divisor: 0.0100
+            div-slide: (rrand 0 10)
+            depth: (rrand "0.001" 2)
+            attack: 0.01
+            release: (rrand 0 5)
+            amp: 0.5 ) )
+      (control player divisor: (rrand "0.001" 50))
+      (sleep [0.5 1 2].choose) ) )
+
+
+(spex ex-reich-phase
+   (= reich-notes (ring :E4 :Fs4 :B4))
+   (live-loop :slower do
+      (play reich-notes.tick release: 0.1)
+      (sleep 0.3) )
+   (live-loop :faster do
+      (play reich-notes.tick release: 0.1)
+      (sleep 0.296) ) )
+
+(spex ex-echo-drama
+   (use-synth :tb303)
+   (use-bpm 45)
+   (use-random-seed 3)
+   (use-debug false)
+   (with-fx :reverb do
+      (with-fx :echo  delay: 0.5 decay: 0.4  do
+         (live-loop :echoes do
+            (play (chord [:b1 :b2 :e1 :e2 :b3 :e3].choose :minor).choose
+               cutoff: (rrand 40 100)
+               amp: 0.5
+               attack: 0
+               release: (rrand 1 2)
+               cutoff-max: 120 )
+            (sleep [0.25 0.5 0.5 0.5 1 1].choose) ) ) ) )
+
+
+(spex ex-tron-bike
+   (use-random-seed 10)
+   (= notes (ring :b1 :b2 :e1 :e2 :b3 :e3))
+   (live-loop :tron do
+      (with-synth :dsaw do
+         (with-fx :slicer phase: [0.25 0.125].choose do
+            (with-fx :reverb room: 0.5 mix: 0.3 do
+               (= n1 (chord notes.choose :minor).choose)
+               (= n2 (chord notes.choose :minor).choose)
+               (= p (play n1 amp: 2 release: 8 note-slide: 4 cutoff: 30 cutoff-slide: 4 detune: (rrand 0 0.2)))
+               (control p note: n2 cutoff: (rrand 80 120)) ) ) )
+      (sleep 8) ) )
+
 
 (sp-example ex-turbo-test
    (play 60)
@@ -515,8 +528,8 @@
    (play 64) )
 
 
-# Broken
 (spex ex-acid
+
    (use-debug false)
    (load-sample :bd-fat)
 
@@ -538,7 +551,7 @@
                attack: 0
                release: 0.1
                cutoff: (rrand-i 50 90) + i * 10 )
-            (sleep 0.125) ) ) )
+            (sleep 0.125) ) )
 
       (cue :bar)
       (32.times do |i|
@@ -549,6 +562,17 @@
             cutoff: (rrand-i 70 98) + i
             res: (rrand 0.9 0.95) )
          (sleep 0.125) )
+
+      (cue :baz)
+      (with-fx :reverb  mix: 0.3  do |r|
+         (32.times do |m|
+            (control r  mix: (rrand 0.2 0.8))
+            (use-synth :prophet)
+            (play (chord :e :minor).choose
+               attack: 0
+               release: 0.08
+               cutoff: (rrand-i 110 130) )
+            (sleep 0.125) ) )
 
       (cue :quux)
       (in-thread do
@@ -562,24 +586,24 @@
                   cutoff: (rrand 50 100))
                (sleep 0.25) ) ) )
 
-      (sleep 4)
+      (sleep 4) )
 )
 
-# kinda works
+
 (spex ex-ambient
 
    (load-samples (sample-names :ambi))
    (sleep 2)
 
-   (with_fx :reverb mix: 0.8 do
-     (live_loop :foo do
-       # try changing the sp_ vars..
+   (with-fx :reverb mix: 0.8 do
+     (live-loop :foo do
+       # try changing the sp- vars..
        (= sp-name (choose (sample_names :ambi)))
-       # sp_name = choose sample_names :drum
+       # (= sp-name (choose (sample_names :drum)))
        (= sp-time [1 2].choose)
-       #sp_time = 0.5
+       # (= sp-time 0.5)
        (= sp-rate 1)
-       #sp_rate = 4
+       # (= sp-rate 4)
 
        (= s (sample sp-name
                amp: 2
@@ -589,3 +613,21 @@
                pan-slide: sp-time ) )
        (control s pan: (rrand 1 1))
        (sleep sp-time) ) ) )
+
+
+(spex ex-idm-bb
+   (live-loop :idm-bb do
+      (= n [1 2 4 8 16].choose)
+      (sample :drum-heavy-kick  amp: 2)
+      (sample :ambi-drone
+         rate: [0.25 0.5 0.125 1].choose
+         amp: 0.25 if (one-in 8) )
+      (sample :ambi-lunar-land
+         rate: [0.5 0.125 1 -1 -0.5].choose
+         amp: 0.25 if (one-in 8) )
+      (sample :loop-amen
+         attack: 0
+         release: 0.05
+         start: 1 - 1.0 / n
+         rate: [1 1 1 1 1 1 -1].choose )
+      (sleep (sample-duration :loop-amen) / n) ) )
