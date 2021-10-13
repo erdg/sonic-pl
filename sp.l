@@ -67,6 +67,15 @@
 (de spl-debug Xs
    (spl-run-forms (mapcar spl-preprocess Xs)) )
 
+# even more convenient!
+#
+#  (sp ...) -- send to sonic pi
+#  (sp T ...) -- print to stdout (debug)
+(de sp Lst
+   (if (=T (car Lst))
+      (macro (t (spl-debug ^ (cdr Lst))))
+      (macro (spl ^ Lst)) ) )
+
 (de spl-run-forms (Xs)
    (for X Xs
       (cond
