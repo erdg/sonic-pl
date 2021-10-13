@@ -87,9 +87,12 @@
       (prin ";") ) )
 
 (de spl-run-fn (Form)
-   (let [(Car . Cdr) Form]
+   (let [(Car . Cdr) Form
+         Opts NIL ] # flag for start of optional params
       (prog
-         (prin (pl-to-rb Car) (char 40))
+         (if (member 'if Cdr)
+            (prin (pl-to-rb Car) " ")  # hack for inline 'if'
+            (prin (pl-to-rb Car) (char 40)) )
          (for (I . X) Cdr
             (let [Next (car (nth Cdr (+ I 1)))
                   Prev (car (nth Cdr (- I 1))) ]
@@ -108,38 +111,39 @@
                                  (unless (=1 I) (prin " "))
                                  (spl-run-var X)
                                  (prin ";") ) )
-                           # ((member (car X) *SplFns)
-                           #    (prog
-                           #       (unless (=1 I) (prin " "))
-                           #       (spl-run-fn X) ) )
+                           # do / end block fns
                            ((or (member (car X) *SplBlockFns) (sub? ".times" (car X)))
                               (prog
                                  (unless (=1 I) (prin " "))
                                  (spl-run-block-fn X) ) )
-                           # (T (eval X))
                            (T (prog
                                  (unless (=1 I) (prin " "))
                                  (spl-run-fn X) ) ) ) ) )
                   # .functions
                   ((pre? "." X) (prin X))
-                  ((sub? "." Prev) (prin "," X))
-                  # arg list, e.g. |x| or |x y|
-                  ((sub? "||" (pack (sort (chop X))))
-                     (prin " " (lowc1 X)) )
-                  ((pre? "|" X)
-                     (prog (on ArgsOn) (prin " " (lowc1 X))) )
-                  ((= (last (chop X)) "|")
-                     (prog (off ArgsOn) (prin " " (lowc1 X))) )
                   # opts
                   ((= (last (chop X)) ":")
-                     (prin ", " X) )
+                     (prog
+                        (ifn Opts (on Opts))
+                        (prin ", " X) ) )
+                  # previous .function
+                  ((and (sub? "." Prev) (not (str? Prev)))
+                     (prin (if Opts " " ",") X) )
+                  (Opts (prin " " X))
+                  # arg list, e.g. |x| or |x y|
+                  ((sub? "||" (pack (sort (chop X))))
+                     (prin " " X) )
+                  ((pre? "|" X)
+                     (prog (on ArgsOn) (prin " " X)) )
+                  ((= (last (chop X)) "|")
+                     (prog (off ArgsOn) (prin " " X)) )
+                  # symbols
                   ((pre? ":" Prev) (prin "," X))
                   # numbers
                   ((format Prev *Scl) (prin "," X))
                   ((spl-opt? Prev) (prin " " X))
-                  # ((and Prev (sym? Prev)) (prin "," X))
                   (T (prin (unless (=1 I) " ") X) ) ) ) )
-         (prin (char 41)) ) ) )
+         (ifn (member 'if Cdr) (prin (char 41))) ) ) )
 
 (de spl-run-var (Form)
    (++ Form)  # discard '=' sym
@@ -221,34 +225,24 @@
                                     (unless (=1 I) (prin " "))
                                     (spl-run-var X)
                                     (prin ";") ) )
-                              # ((member (car X) *SplFns)
-                              #    (prog
-                              #       (prin " ")
-                              #       (spl-run-fn X)
-                              #       (unless (spl-opt? Prev) (prin ";")) ) )
-                              # ((member (car X) *SplBlockFns)
                               ((or (member (car X) *SplBlockFns) (sub? ".times" (car X)))
                                  (prog
                                     (prin " ")
                                     (spl-run-block-fn X)
                                     (prin ";") ) )
-                              # (T (eval X))
                               (T (prog
-                                 (prin " ")
-                                 (spl-run-fn X)
-                                 (unless (spl-opt? Prev) (prin ";")) ) ) ) ) )
+                                    (prin " ")
+                                    (spl-run-fn X)
+                                    (unless (spl-opt? Prev) (prin ";")) ) ) ) ) )
                      # .functions
                      ((pre? "." X) (prin X))
                      # arg list, e.g. |x| or |x y|
-                     ((sub? "||" (pack (sort (chop X)))) (prin " " (lowc1 X)))
-                     ((pre? "|" X) (prog (on ArgsOn) (prin " " (lowc1 X))))
-                     ((= (last (chop X)) "|") (prog (off ArgsOn) (prin " " (lowc1 X))))
+                     ((sub? "||" (pack (sort (chop X)))) (prin " " X))
+                     ((pre? "|" X) (prog (on ArgsOn) (prin " " X)))
+                     ((= (last (chop X)) "|") (prog (off ArgsOn) (prin " " X)))
                      # opts
                      ((= (last (chop X)) ":")
                         (prin ", " X) )
-                     # # local vars (via |...|) -- this feels like a hack
-                     # ((upp? (car (chop X)))
-                     #    (prin (lowc1 X) ",") )
                      # numbers
                      # ((format Prev *Scl) (prin "," X))
                      (T (prin " " X)) )
@@ -266,7 +260,7 @@
          (flip Acc)
             (cond
                # format numbers for printing (damnit picolisp)
-               ((and (num? (car X)) (or (>= (length (car X)) *Scl) (< 99 (car X) 1000)))
+               ((and (num? (car X)) (or (>= (length (car X)) *Scl) (< 131 (car X) 1000)))
                   (recurse (cdr X) (cons (format (car X) *Scl) Acc)) )
                # dashes to underscores
                ((sym? (car X))
