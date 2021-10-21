@@ -50,13 +50,8 @@
    (ratio :c4 1 1)
    (ratio :c4 5 4)
    (ratio :c4 3 2)
-   (ratio :c4 7 4) )
-
-
-# HACK -- can't come up with a rule to get a comma after
-# 'note' in the (ruby) output of the following 'ratio' calls.
-# use '$var' in such a case
-(sp ex-layering-functions
+   (ratio :c4 7 4)
+   (sleep 1)
    (define :just-7th-chord do |note|
       (ratio note 1 1)
       (ratio note 5 4)
@@ -482,3 +477,95 @@
          (sleep 8) ) )
 
 ]
+
+# https://in-thread.sonic-pi.net/t/new-to-sonic-pi-so-every-little-helps/3312/5
+[sp ex-trap-hats
+   (use-bpm 86)
+   (define :hats do |d|
+      (density d do
+         (sample :drum-cymbal-closed)
+         (sleep 1) ) )
+   (live-loop :trap-hats do
+      (hats (ring 4 4 3 8 4 6 4 16).tick) )
+   (= n [1 0 1 0 2 0 0 0 1 0 0 1 2 0 1 0])
+   (live-loop :trap-beat do
+      (n.each-with-index do |i|
+         (sample :bd-haus if i == 1)
+         (sample :drum-snare-hard if i == 2)
+         (sleep 0.25) ) )
+]
+
+[sp ex-density-bass
+   (use-bpm 96)
+   (load-samples [:elec-tick :bd-gas])
+   (live-loop :density-bass do
+      (density [2 2 2 3].choose do
+         (sample :bd-gas amp: 3)
+         (sleep 1) ) )
+   (live-loop :hats do
+      (density (ring 4 3 2 4 2 8 4 16).tick do
+         (sample :elec-tick)
+         (sleep 1) ) )
+]
+
+
+# https://in-thread.sonic-pi.net/t/stutter-beat-repeat/513/14
+[sp ex-stutter-beat
+   (define :pl do |s p = 0|
+      (sample s, pan: p)
+      (sleep 1) )
+   (define :chos do
+      (return [:bd-haus :bd-sone :bd-klub :drum-soft-snare :drum-cymbal-closed].choose ) )
+   (live-loop :stutter do
+      (use-bpm 120)
+      (= s chos)
+      (pl chos -1)
+      (density [2 3 4].choose do
+         (sample chos pan: -1)
+         (sleep 1) )
+      (density [2 3 4].choose do
+         (sample chos pan: -0.5)
+         (sleep 1) )
+      (pl chos -0.25) )
+   (live-loop :stutter2 do
+         (use-bpm 120)
+         (= s chos)
+         (pl chos 1)
+         (pl chos 1)
+         (density [2 3 4].choose do
+            (sample chos pan: 1)
+            (sleep 1) )
+         (density [2 3 4].choose do
+            (sample chos pan: 0.5)
+            (sleep 1) )
+         (pl chos 0.25) )
+]
+
+# to be continued
+[sp ex-aphex-twin-beat
+   (use-bpm "280")
+   (with-fx :reverb  mix: 0.1 room: 0.6  do |reverb|
+      (with-fx :echo  phase: 0.75 mix: 0.1 decay: 5.0  do |echo|
+         (live-loop "main" do
+            (if (tick :fx-start) == 0 then
+               (set :reverb reverb)
+               (set :echo echo) )
+            (control (get :reverb))
+            (control (get :echo))
+            (cue "bar")
+            (sleep 4) )
+         (live-loop "hihats" do
+            (sync "/cue/bar")
+            (= a 0.3)
+            (= pedal [1 1 1 2].ring.tick(:pedal))
+            (in-thread do
+               (= accent [1.0 0.4 0.4 0.4].ring)
+               (4.times do
+                  (sample :drum-cybal-closed amp: a*accent.tick)
+                  (sleep 1.0)
+                  (in-thread do
+                     (= n (dice 8) - 3)
+                     (n.time do
+                        (sample :drum-cymbal-closed amp: a)
+                        (sleep 1.0 / 4) ) ) ) ) )
+         ]
