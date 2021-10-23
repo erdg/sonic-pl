@@ -1,0 +1,11 @@
+# tests
+(ruby-unit-test '("2" "3" "4")
+   ([2 3 4].each do |n| (puts n)) )
+(ruby-unit-test '("234")
+   ([2 3 4].each do |n| (print n)) )
+(ruby-unit-test '("true")
+   (puts ([2 4 6].all? do |n| n % 2 == 0)) )
+(ruby-unit-test '("yep")
+   (if true then (puts "yep") else (puts "nope")) )
+(ruby-unit-test '("nope")
+   (if false then (puts "yep") else (puts "nope")) )

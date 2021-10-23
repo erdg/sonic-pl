@@ -1,13 +1,5 @@
 (load "ruby.l")
 
-# abbrevation for common pattern in this code
-(de sh (@Str . Rest)
-   (macro
-      (call 'sh "-c"
-         (text @Str
-            ^ Rest ))))
-
-
 ### sonic pi tool
 #
 # pass ruby code (as string) to sonic pi server

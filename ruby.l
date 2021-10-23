@@ -1,7 +1,11 @@
 (scl 4) # seems the best for sonic-pi
 
-# NOTE - currently not using 'ruby-load' because it
-# messes with the numbers (damnit picolisp)
+# NOTE - numbers are a bit funky. integers 100-999 should be written as e.g.
+# '100.0' or '999.0'. best practice is to make everything a float (except for
+# 'times' loops, etc)
+
+# currently not using 'ruby-load' because numbers are even more buggy
+
 
 # USAGE
 #
@@ -34,7 +38,6 @@
       (glue " " @)
       (any @) ) )
 
-
 (de _transform (X)
    (recur (X Acc)
       (ifn X
@@ -62,30 +65,19 @@
                      (recurse (cdr X) (cons (car X) Acc)) ) ) ) ) ) ) )
 
 
-(de ruby-syntax-check-file (File)
-   (pipe
-      (out '(ruby "-c")
-         # (ruby-run (ruby-load File)) )
-         (ruby-run (in File (read))) )
-      (line T) ) )
-
-(de ruby-test ()
-   (ruby-syntax-check-file "ruby-test.l") )
-
-# (ruby-test "(3.times { (play 60) (sleep 1) })"
-#    '(3.times "{" (play 60) (sleep 1) "}") )
-
-
-
+# top level
 (de ruby-run (Xs)
    (for X (ruby-prep Xs)
       (cond
          ((= (car X) '=)
             (ruby-run-var X) )
-         ((or (sub? "do" X) (sub? "{" X) (sub? "then" X) (sub? "when" X))
+         ((ruby-block? X)
             (ruby-run-block
-               # (if (sub? "each" X) (cons NIL X) X) ) )
-               (if (pair (car X)) (cons NIL X) X) ) ) # first elem is an array
+               (if (pair (car X))  # array first?
+                  (cons NIL X)
+                  X ) ) )
+         ((ruby-array? X)
+            (ruby-run-array X) )
          (T (ruby-run-fn X)) )
       (prin ";") ) )
 
@@ -93,25 +85,16 @@
 #
 # - numbers to strings (0.125 -> "0.125")
 # - pl symbols to rb symbols (do-something -> do_something)
-
 (de ruby-prep (X)
    (recur (X Acc)
       (ifn X
          (flip Acc)
             (cond
-               # format numbers for printing (damnit picolisp)
-               ((and (num? (car X)) (or (>= (length (car X)) *Scl) (< 131 (car X) 1000)))
+               # format numbers for printing (damnit picolisp!)
+               # this represents the best compromise
+               ((and (num? (car X)) (or (>= (length (car X)) *Scl) (< 99 (car X) 1000)))
                   (recurse (cdr X) (cons (format (car X) *Scl) Acc)) )
-               # # attempt to sort out the 'ruby-transform' number issues. still broken
-               # ((num? (car X))
-               #    (let N (format (car X) *Scl)
-               #       (cond
-               #          ((sub? ".0000" N)
-               #             (recurse (cdr X) (cons (any (pack (car (split (chop N) ".")))) Acc)) )
-               #          ((or (>= (length (car X)) *Scl) (< 131 (car X) 1000))
-               #             (recurse (cdr X) (cons (format (car X) *Scl) Acc)) )
-               #          (T
-               #             (recurse (cdr X) (cons (car X) Acc)) ) ) ) )
+               # transients symbols pass through
                ((str? (car X))
                   (recurse (cdr X) (cons (sym (pack (car X))) Acc)) )
                # dashes to underscores
@@ -126,19 +109,18 @@
                      (recurse (cdr X) (cons (recurse (car X) NIL) Acc)) )
                (T (recurse (cdr  X) (cons (car X) Acc))) ) ) ) )
 
-
-# getting messy...
 (de ruby-run-fn (Form)
    (let [(Car . Cdr) Form
          Opts NIL ] # flag for start of optional params
       (cond
-         ((sub? "each" Form)
-            (ruby-run-block (cons NIL Form)) )
-         ((= Car 'if)
-            (ruby-run-block Form) )
+         ((ruby-block? Form)
+            (ruby-run-block
+               (if (pair (car Form))
+                  (cons NIL Form)
+                  Form ) ) )
          (T
-            (prog  # hack for inline 'if'
-               (if (member 'if Form)
+            (prog  # hack for inline modifiers
+               (if (contains? '(if unless while until) Form)
                   (prin (pl-to-rb Car) " ")
                   (prin (pl-to-rb Car) (char 40)) )
                (for (I . X) Cdr
@@ -147,53 +129,54 @@
                      (cond
                         ((pair X)
                            (cond
-                              # prev .method? (eg. '[...].shuffle.take(3)')
-                              ((and (atom Prev) (sub? "." Prev) (not (str? Prev)))
+                              # prev .method()
+                              ((ruby-dot-method? Prev)
                                  (ruby-run-fn (cons NIL X)) )
-                              # arrays
-                              ((ruby-array? X)
-                                 (prog
-                                    (unless (=1 I) (prin (if Opts " " ",")))
-                                    (prin "[" (glue "," X) "]") ) )
                               # variables
                               ((= (car X) '=)
                                  (prog
                                     (unless (=1 I) (prin " "))
                                     (ruby-run-var X)
                                     (prin ";") ) )
-                              # blocks
-                              ((or (sub? "do" X) (sub? "{" X))
+                              ((ruby-block? X)
+                                 (ruby-run-block
+                                    (if (pair (car X))
+                                       (cons NIL X)
+                                       X ) ) )
+                              ((ruby-array? X)
                                  (prog
-                                    (unless (=1 I) (prin " "))
-                                    (ruby-run-block
-                                       (if (sub? "each" X) (cons NIL X) X) ) ) )
-                              ((sub? "each" X)
-                                 (ruby-run-block (cons NIL X)) )
+                                    (unless (=1 I)
+                                       (unless (= Prev 'get)
+                                          (prin (if Opts " " ",")) ) )
+                                    (ruby-run-array X) ) )
                               (T (prog
                                     (unless (=1 I)
-                                       # (prin " ")
                                        (prin
-                                          (if (or (ruby-opt? Prev) (member 'if Cdr))
+                                          (if
+                                             (or
+                                                (ruby-opt? Prev)
+                                                (contains? '(if unless until while) Cdr)
+                                                (member Prev '(* / + - %)) )
                                              " "
                                              "," ) ) )
-                                             (ruby-run-fn X) ) ) ) )
-                        # inline conditionals
+                                    (ruby-run-fn X) ) ) ) )
+                        # inline modifier
                         ((member X '(if unless when while))
                            (prog
                               (ifn Opts (on Opts))  # similar behavior, hijacking 'Opts' flg
                               (prin " " X) ) )
-                        # .methods
-                        ((pre? "." X) (prin X))
+                        # .method()
+                        ((ruby-dot-method? X) (prin X))
                         # opts
-                        ((= (last (chop X)) ":")
+                        ((ruby-opt? X)
                            (prog
                               (ifn Opts (on Opts))
                               (prin (unless (=1 I) ", ") X) ) )
-                        # previous .method
-                        ((and (atom Prev) (sub? "." Prev) (not (str? Prev)))
+                        # prev .method()
+                        ((ruby-dot-method? Prev)
                            (prin (if Opts " " ",") X) )
                         (Opts (prin " " X))
-                        # arg list, e.g. |x| or |x y|
+                        # arg list, e.g. |x y|
                         ((sub? "||" (pack (sort (chop X))))
                            (prin " " X) )
                         ((pre? "|" X)
@@ -203,15 +186,15 @@
                         # ruby symbols
                         ((pre? ":" Prev) (prin "," X))
                         ((pre? ":" X) (prin (if Opts " " (unless (=1 I) ",")) X))
-                        # numbers
+                        # numbers / maths
                         ((member X '(* / + - %)) (prin " " X))  # inline maths
-                        ((member Prev '(* / + - %)) (prin " " X))
                         ((format Prev *Scl) (prin "," X))
+                        ((member Prev '(* / + - %)) (prin " " X))
                         ((and (format X *Scl) Prev (sym? Prev))
                            (prin "," X) )
                         ((ruby-opt? Prev) (prin " " X))
                         (T (prin (unless (=1 I) " ") X) ) ) ) )
-               (ifn (member 'if Form) (prin (char 41))) ) ) ) ) )
+               (ifn (contains? '(if unless while until) Form) (prin (char 41))) ) ) ) ) )
 
 (de ruby-run-var (Form)
    (++ Form)  # discard '=' sym
@@ -224,37 +207,96 @@
                (cond
                   ((pair X)
                      (cond
-                        # prev .method? (eg. '[...].shuffle.take(3)')
-                        ((and (atom Prev) (sub? "." Prev) (not (str? Prev)))
+                        # prev .method()
+                        ((ruby-dot-method? Prev)
                            (ruby-run-fn (cons NIL X)) )
                         # arrays
                         ((ruby-array? X)
                            (prog
-                              (if (ruby-array? Prev) (prin ", ") (prin " "))
-                              (prin "[" (glue "," X) "]") ) )
+                              (if (ruby-array? Prev) (prin ",") (prin " "))
+                              (ruby-run-array X) ) )
                         # blocks
-                        ((or (sub? "do" X) (sub? "{" X))
+                        ((ruby-block? X)
                            (prog
                               (unless (=1 I) (prin " "))
                               (ruby-run-block
-                                 (if (sub? "each" X) (cons NIL X) X) ) ) )
+                                 (if (pair X) (cons NIL X) X) ) ) )
                         (T
                            (prog
                               (unless (=1 I) (prin " "))
                               (ruby-run-fn X) ) ) ) )
-                  # .functions
+                  # .method()
                   ((pre? "." X) (prin X))
                   ((pre? "." Prev) (prin "," X))
-                  # arg list, e.g. |x| or |x y|
+                  # block arg list, e.g. |x y|
                   ((sub? "||" (pack (sort (chop X)))) (prin " " X))
                   ((pre? "|" X) (prog (on ArgsOn) (prin " " X)))
                   ((= (last (chop X)) "|") (prog (off ArgsOn) (prin " " X)))
                   # opts
-                  ((= (last (chop X)) ":")
+                  ((ruby-opt? X)
                      (prin ", " X) )
                   # numbers
                   ((format Prev *Scl) (prin "," X))
                   (T (prin (unless (=1 I) " ") X)) ) ) ) ) ) )
+
+(de ruby-run-array (Arr)
+   (prin "[")
+   (for (I . X) Arr
+      (let [Next (car (nth Arr (+ I 1)))  # formatting often depends on
+            Prev (car (nth Arr (- I 1)))  # what comes before or after
+            Opts NIL ]
+         (cond
+            ((pair X)
+               (cond
+                  # prev .method? (eg. '[...].shuffle.take(3)')
+                  ((ruby-dot-method? Prev)
+                     (ruby-run-fn (cons NIL X)) )
+                  # arrays
+                  ((ruby-array? X)
+                     (unless (=1 I) (prin ","))
+                     (ruby-run-array X) )
+                  (T (prog
+                        (unless (=1 I)
+                           (prin
+                              (if (or (ruby-opt? Prev) (member 'if Arr))
+                                 " "
+                                 "," ) ) )
+                        (ruby-run-fn X) ) ) ) )
+            # inline conditionals
+            ((member X '(if unless when while))
+               (prog
+                  (ifn Opts (on Opts))  # similar behavior, hijacking 'Opts' flg
+                  (prin " " X) ) )
+            # .methods
+            ((pre? "." X) (prin X))
+            # opts
+            ((= (last (chop X)) ":")
+               (prog
+                  (ifn Opts (on Opts))
+                  (prin (unless (=1 I) ", ") X) ) )
+            # previous .method
+            ((ruby-dot-method? Prev)
+               (prin (if Opts " " ",") X) )
+            (Opts (prin " " X))
+            # arg list, e.g. |x| or |x y|
+            ((sub? "||" (pack (sort (chop X))))
+               (prin " " X) )
+            ((pre? "|" X)
+               (prog (on ArgsOn) (prin " " X)) )
+            ((= (last (chop X)) "|")
+               (prog (off ArgsOn) (prin " " X)) )
+            # ruby symbols
+            ((pre? ":" Prev) (prin "," X))
+            ((pre? ":" X) (prin (if Opts " " (unless (=1 I) ",")) X))
+            # numbers
+            ((member X '(* / + - %)) (prin " " X))  # inline maths
+            ((format Prev *Scl) (prin "," X))
+            ((member Prev '(* / + - %)) (prin " " X))
+            ((and (format X *Scl) Prev (sym? Prev))
+               (prin "," X) )
+            ((ruby-opt? Prev) (prin " " X))
+            (T (prin (unless (=1 I) " ") X) ) ) ) )
+   (prin "]") )
 
 (de ruby-run-block (Form)
    (let [(Car . Cdr) Form
@@ -270,14 +312,14 @@
                (cond
                   ((pair X)
                      (cond
-                        # prev .method? (eg. '[...].shuffle.take(3)')
-                        ((and (atom Prev) (sub? "." Prev) (not (str? Prev)))
+                        # prev .method() call
+                        ((ruby-dot-method? Prev)
                            (ruby-run-fn (cons NIL X)) )
                         # arrays
                         ((ruby-array? X)
                            (prog
-                              (if (ruby-array? Prev) (prin ", ") (prin " "))
-                              (prin "[" (glue "," X) "]") ) )
+                              (if (ruby-array? Prev) (prin ",") (prin " "))
+                              (ruby-run-array X) ) )
                         # variables
                         ((= (car X) '=)
                            (prog
@@ -285,11 +327,13 @@
                               (ruby-run-var X)
                               (prin ";") ) )
                         # blocks
-                        ((or (sub? "do" X) (sub? "{" X))
+                        ((ruby-block? X)
                            (prog
                               (prin " ")
                               (ruby-run-block
-                                 (if (sub? "each" X) (cons NIL X) X) )
+                                 (if (pair (car X))
+                                    (cons NIL X)
+                                    X ) )
                               (prin ";") ) )
                         # functions
                         (T (prog
@@ -305,35 +349,87 @@
                   ((member X '(then when))
                      (prog (on Do) (prin " " X)) )
                   ((member X '("{" "}")) NIL)
-                  # .methods
+                  # .method() call
                   ((pre? "." X) (prin X))
-                  # local arg list, e.g. |x| or |x y|
+                  # arg list, e.g. |x y|
                   ((sub? "||" (pack (sort (chop X)))) (prin " " X))
                   ((pre? "|" X) (prog (on ArgsOn) (prin " " X)))
                   ((= (last (chop X)) "|") (prog (off ArgsOn) (prin " " X)))
                   # opts
-                  ((= (last (chop X)) ":")
-                     (prin ", " X) )
+                  ((ruby-opt? X) (prin ", " X))
                   (T (prin " " X)) )
                ) )
          (if Do (prin " end")) ) ) )
 
+# utils
 
 # picolisp symbol to ruby symbol
 (de pl-to-rb (Sym) (pack (replace (chop Sym) "-" "_")))
+
+(de ruby-block? (Form)
+   (contains? '(do "{" then else elseif) Form) )
 
 (de ruby-opt? (Sym)
    (= (last (chop Sym)) ":") )
 
 (de ruby-array? (X)
-   (and (pair X) (or (num? (car X)) (str? (car X)) (pre? ":" (car X)))) )
+   (ifn (pair X)
+      NIL
+      (if (pair (car X))
+         (ruby-array? @)
+         (or (num? (car X)) (str? (car X)) (pre? ":" (car X))) ) ) )
 
- # (eg. '[...].shuffle.take(3)')
- # NOTE - implicit 'Prev' arg, for use in 'for' loops above
-(de ruby-prev-method? (X)
+# .method() call syntax (eg. 'something.take(3)')
+(de ruby-dot-method? (X)
    (and
-      (=1 (length X))
-      (atom Prev)
-      (sub? "." Prev)
-      (not (str? Prev)) ) )
+      (atom X)
+      (sub? "." X)
+      (not (str? X)) ) )
 
+# are any members of L1 present in the top level of L2
+(de contains? (L1 L2)
+   (not
+      (fully '((X) (= X NIL))
+         (make
+            (for L L1
+               (link (member L L2)) ) ) ) ) )
+
+
+# shell helper
+#  (sh "ruby -c @1" (tmp "test.rb"))
+(de sh (@Str . Rest)
+   (macro
+      (call 'sh "-c"
+         (text @Str
+            ^ Rest ) ) ) )
+
+
+# tests
+(de ruby-check-file (File)
+   (pipe
+      (out '(ruby "-c")
+         # (ruby-run (ruby-load File)) )
+         (ruby-run (in File (read))) )
+      (line T) ) )
+
+(de ruby-test ()
+   (ruby-check-file "ruby-test.l") )
+
+# interactive ruby
+(de irb Xs
+   (sh "ruby -e '@1'"
+      (pipe
+         (ruby-run Xs)
+         (line T) ) ) )
+
+(de ruby-unit-test (Result . Xs)
+   (sh "ruby -e '@1' > @2"
+      (pipe
+         (ruby-run Xs)
+         (line T) )
+      (tmp "ruby-results") )
+   (test Result
+      (in (tmp "ruby-results")
+         (make
+            (until (eof)
+               (link (line T)) ) ) ) ) )
