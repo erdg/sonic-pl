@@ -9,20 +9,17 @@
 
 # should play a lame industrial beat in c minor
 (sp ex-lame-industrial
-   (live-loop :notz do
+   (live-loop :notes do
       (play (chord :c3 :minor7).choose)
       (sleep 0.5) )
-   (live-loop :padz do
-      (sync :notz)
+   (live-loop :pads do
       (synth :prophet notes: (chord :c4 :minor7) release: 3)
       (sleep 4) )
-   (live-loop :bazz do
-      (sync :notz)
+   (live-loop :bass do
       (synth :tb303 note: :c2 release: 3 amp: 0.4)
       (sleep 4) )
    (live-loop :bd do
-      (sync :notz)
-      (sample :bd_haus)
+      (sample :bd-haus)
       (sleep 1) ) )
 
 
@@ -33,15 +30,15 @@
          (sample :bass-dnb-f amp: 5)
          (sample :loop-amen amp: 5)
          (sleep 1)
-         (control c cutoff: (rrand 40 120) cutoff-slide: (rrand 1 4)) ) ) )
+         (control c cutoff: (rrand 40.0 120.0) cutoff-slide: (rrand 1 4)) ) ) )
 
 
 (sp ex-basic-variable
    (= s (synth :prophet note: 60 release: 5 cutoff: 60))
    (sleep 1)
-   (control s cutoff: 80)
+   (control s cutoff: 80.0)
    (sleep 1)
-   (control s cutoff: 100) )
+   (control s cutoff: 100.0) )
 
 
 (sp ex-basic-functions
@@ -75,12 +72,12 @@
 
 
 (sp ex-jungle
-   (with-fx :lpf  cutoff: 90  do
+   (with-fx :lpf  cutoff: 90.0  do
       (with-fx :reverb  mix: 0.5  do
-         (with-fx :compressor  pre-amp: 20  do
+         (with-fx :compressor  pre-amp: 20.0  do
             (with-fx :distortion  distort: 0.4  do
                (live-loop :jungle do
-                  (use-random-seed 667)
+                  (use-random-seed 667.0)
                   (4.times do
                      (sample :loop-amen
                         beat-stretch: 1
@@ -97,13 +94,13 @@
    (live-loop :sci-fi do
       (= p
          (play (chord :Eb3 :minor).choose
-            divisor: "0.01"
+            divisor: 0.01
             div-slide: (rrand 0 10)
-            depth: (rrand "0.001" 2)
-            attack: "0.01"
+            depth: (rrand 0.01 2)
+            attack: 0.01
             release: (rrand 0 5)
             amp: 0.5 ) )
-      (control p divisor: (rrand "0.001" 50))
+      (control p divisor: (rrand 0.001 50))
       (sleep [0.5 1 2].choose) ) )
 
 
@@ -125,11 +122,11 @@
       (with-fx :echo  delay: 0.5 decay: 0.4  do
          (live-loop :echoes do
             (play (chord [:b1 :b2 :e1 :e2 :b3 :e3].choose :minor).choose
-               cutoff: (rrand 40 100)
+               cutoff: (rrand 40.0 100.0)
                amp: 0.5
                attack: 0
                release: (rrand 1 2)
-               cutoff-max: 120 )
+               cutoff-max: 120.0 )
             (sleep [0.25 0.5 0.5 0.5 1 1].choose) ) ) ) )
 
 
@@ -137,20 +134,14 @@
    (use-random-seed 10)
    (= notes (ring :b1 :b2 :e1 :e2 :b3 :e3))
    (live-loop :tron do
-      (with-synth :dsaw do
-         (with-fx :slicer phase: [0.25 0.125].choose do
+      (with-synth "dsaw" do
+         (with-fx "slicer" phase: [0.25 0.125].choose do
             (with-fx :reverb room: 0.5 mix: 0.3 do
                (= n1 (chord notes.choose :minor).choose)
                (= n2 (chord notes.choose :minor).choose)
                (= p (play n1 amp: 2 release: 8 note-slide: 4 cutoff: 30 cutoff-slide: 4 detune: (rrand 0 0.2)))
                (control p note: n2 cutoff: (rrand 80 120)) ) ) )
       (sleep 8) ) )
-
-
-(sp ex-turbo-test
-   (play 60)
-   (sleep 1)
-   (play 64) )
 
 
 (sp ex-acid
@@ -169,13 +160,13 @@
    (live-loop :acid do
       (cue :foo)
       (4.times do |i|
-         (use-random-seed 667)
+         (use-random-seed 667.0)
          (16.times do
             (use-synth :tb303)
             (play (chord :e3 :minor).choose
                attack: 0
                release: 0.1
-               cutoff: (rrand-i 50 90) + i * 10 )
+               cutoff: (rrand-i 50 90) + i * 10)
             (sleep 0.125) ) )
 
       (cue :bar)
@@ -196,7 +187,7 @@
             (play (chord :e :minor).choose
                attack: 0
                release: 0.08
-               cutoff: (rrand-i 110 130) )
+               cutoff: (rrand-i 110.0 130.0) )
             (sleep 0.125) ) )
 
       (cue :quux)
@@ -208,7 +199,7 @@
                (play (chord :a :minor).choose
                   attack: 0
                   release: 0.1
-                  cutoff: (rrand 50 100))
+                  cutoff: (rrand 50.0 100.0))
                (sleep 0.25) ) ) )
 
       (sleep 4) )
@@ -232,8 +223,8 @@
 
        (= s (sample sp-name
                amp: 2
-               cutoff: (rrand 70 130)
-               rate: sp-rate * (choose [0.5 1])
+               cutoff: (rrand 70.0 130.0)
+               rate: sp-rate * [0.5 1].choose
                pan: (rrand -1 1)
                pan-slide: sp-time ) )
        (control s pan: (rrand 1 1))
@@ -276,12 +267,10 @@
          (sleep 0.125) ) ) )
 
 (sp ex-basic-function-params
-
    (define :chord-player do |root repeats|
       (repeats.times do
          (play (chord root :minor) release: 3)
          (sleep 0.5) ) )
-
    (chord-player :e3 2)
    (sleep 0.5)
    (chord-player :a3 3)
@@ -337,7 +326,7 @@
 
 
 (sp ex-magpi-coded-beats
-   (use-bpm 100)
+   (use-bpm 100.0)
    (live-loop :amen-break do
       (= p [0.125 0.25 0.5].choose)
       (with-fx :slicer phase: p wave: 0 mix: (rrand 0.7 1) do
@@ -345,13 +334,13 @@
          (sample :loop-amen beat-stretch: 2 rate: r amp: 2) )
       (sleep 2) )
    (live-loop :bass-drum do
-      (sample :bd-haus cutoff: 70 amp: 1.5)
+      (sample :bd-haus cutoff: 70.0 amp: 1.5)
       (sleep 0.5) )
    (live-loop :landing do
       (= bass-line (knit :e1 3 [:c1 :c2].choose 1))
       (with-fx :slicer phase: [0.25 0.5].choose invert-wave: 1 wave: 0 do
          (= s (synth :square note: bass-line.tick sustain: 4 cutoff: 60))
-         (control s cutoff-slide: 4 cutoff: 120)
+         (control s cutoff-slide: 4 cutoff: 120.0)
          (sleep 4) ) ) )
 
 
@@ -388,14 +377,8 @@
       (sleep 1) )
 ]
 
-
-# this works, but something sounds ever so slightly different.
-# there's some kind of resonant hum that seems to grow over
-# time and occasionally clash with the chord changes. I don't
-# notice it when loading the actual example in sonic pi
-
 [sp ex-cloud-beat
-   (use-bpm 100)
+   (use-bpm 100.0)
 
    # HISS
    (live-loop :hiss-loop do
@@ -404,8 +387,8 @@
 
    (define :hihat do
       (use-synth :pnoise)
-      (with-fx :hpf cutoff: 120 do
-         (play release: "0.01" amp: 13) ) )
+      (with-fx :hpf cutoff: 120.0 do
+         (play release: 0.01 amp: 13) ) )
 
 
    (live-loop :hihat-loop do
@@ -416,31 +399,30 @@
 
    (live-loop :snare-loop do
       (sleep (ring 2.5 3).tick)
-      (with-fx :lpf cutoff: 100 do
-         (sample :sn-dub sustain: 0 release: 0.05 amp: 3) )
+      (with-fx :lpf cutoff: 100.0 do
+         (sample :sn-dub sustain: 0 release: 0.05 amp: 3.0) )
       (sleep (ring 1.5 1).look) )
 
    (define :bassdrum do |note1 duration note2 = note1|
       (use-synth :sine)
-      (with-fx :hpf cutoff: 100 do
-         (play note1 + 24  amp: 40 release: 0.01) )
+      (with-fx :hpf cutoff: 100.0 do
+         (play note1 + 24.0  amp: 40.0 release: 0.01) )
       (with-fx :distortion distort: 0.1 mix: 0.3 do
-         (with-fx :lpf cutoff: 26 do
-            (with-fx :hpf cutoff: 55 do
-               (= bass (play note1 amp: 85 release: duration note-slide: duration))
+         (with-fx :lpf cutoff: 26.0 do
+            (with-fx :hpf cutoff: 55.0 do
+               (= bass (play note1 amp: 85.0 release: duration note-slide: duration))
                (control bass note: note2) ) ) )
       (sleep duration) )
 
-   # UGLY 'if', but it works
    (live-loop :bass-loop do
-      (bassdrum 36 1.5)
+      (bassdrum 36.0 1.5)
       (if (bools 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0).tick
          then
-            (bassdrum 36 0.5 40);   # semi-colons are gross but necessary for now
-            (bassdrum 38 1 10);
+            (bassdrum 36.0 0.5 40.0)
+            (bassdrum 38.0 1 10.0)
          else
-            (bassdrum 36 1.5) )
-      (bassdrum 36 1.0 (ring 10 10 10 40).look) )
+            (bassdrum 36.0 1.5) )
+      (bassdrum 36.0 1.0 (ring 10 10 10 40).look) )
 
    (= chord1 (chord :c4  :maj9 num-octaves: 2))
    (= chord2 (chord :es4 :maj9 num-octaves: 2))
@@ -517,7 +499,7 @@
    (define :chos do
       (return [:bd-haus :bd-sone :bd-klub :drum-soft-snare :drum-cymbal-closed].choose ) )
    (live-loop :stutter do
-      (use-bpm 120)
+      (use-bpm 120.0)
       (= s chos)
       (pl chos -1)
       (density [2 3 4].choose do
@@ -528,7 +510,7 @@
          (sleep 1) )
       (pl chos -0.25) )
    (live-loop :stutter2 do
-         (use-bpm 120)
+         (use-bpm 120.0)
          (= s chos)
          (pl chos 1)
          (pl chos 1)
@@ -543,29 +525,78 @@
 
 # to be continued
 [sp ex-aphex-twin-beat
-   (use-bpm "280")
+
+   (use-bpm 280.0)
+
    (with-fx :reverb  mix: 0.1 room: 0.6  do |reverb|
       (with-fx :echo  phase: 0.75 mix: 0.1 decay: 5.0  do |echo|
+
          (live-loop "main" do
             (if (tick :fx-start) == 0 then
                (set :reverb reverb)
                (set :echo echo) )
-            (control (get :reverb))
-            (control (get :echo))
+            (control get[:reverb] mix: 0.3)
+            (control get[:echo] mix: 0.1)
             (cue "bar")
             (sleep 4) )
-         (live-loop "hihats" do
+
+         (live-loop "hihat" do
             (sync "/cue/bar")
             (= a 0.3)
             (= pedal [1 1 1 2].ring.tick(:pedal))
             (in-thread do
                (= accent [1.0 0.4 0.4 0.4].ring)
                (4.times do
-                  (sample :drum-cybal-closed amp: a*accent.tick)
+                  (sample :drum-cymbal-closed amp: a*accent.tick)
                   (sleep 1.0)
                   (in-thread do
                      (= n (dice 8) - 3)
-                     (n.time do
+                     (n.times do
                         (sample :drum-cymbal-closed amp: a)
                         (sleep 1.0 / 4) ) ) ) ) )
-         ]
+
+         (live-loop "snare" do
+            (sync "/cue/bar")
+            (= a 0.4)
+            (in-thread do
+               (= n (dice 8) - 3)
+               (= k [3 4].choose)
+               (n.times do
+                  (sample :drum-snare-hard  amp: a)
+                  (sleep 1.0 / k) )
+               (sleep 3)
+               (if (dice 3) > 2 then
+                  (sample :drum-snare-hard  amp: a) ) ) )
+
+         (live-loop "kick" do
+            (sync "/cue/bar")
+            (= a 0.3)
+            (in-thread do
+               (if (dice 3) > 1 then
+                  (sample :bd-mehackit  amp: a * 2) )
+               (sleep 2.5)
+               (if (dice 3) > 2 then
+                  (sample :bd-mehackit  amp: a) )
+               (in-thread do
+                  (= n (dice 8) - 3)
+                  (= k [3 4].choose)
+                  (n.times do
+                     (sample :bd-mehackit  amp: a / 2)
+                     (sleep 1.0 / k) ) ) ) ) ) )
+
+]
+
+[sp ex-nested-arrays
+   #(= chords [[:g :dom7] [:d :major] [:df :maj9]])
+   #(= chords ((:g :dom7) (:d :major) (:df :maj9)))
+   (= chords `(mapcar list '(:g :d :df) '(:dom7 :major :maj9)))  # normal pl in read-macro!
+   (live-loop :player do
+      (use-synth :hollow)
+      (play (chord *chords.choose)  # cool ruby syntax for splicing array into function call
+         sustain: 0.05
+         release: 0.05
+         cutoff: (rrand 60.0 100.0)
+         pan: (rrand -1.0 1.0)
+         amp: (rrand 0.4 1.4))
+      (sleep (rrand 0.1 0.4)) )
+   ]
